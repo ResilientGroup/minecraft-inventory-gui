@@ -89,7 +89,7 @@ class InventoryManager {
     if (floating) {
       console.log('had a floating item')
       if (item) {
-        if (floating.type === item.type) {
+        if (this.getItemKey(floating) === this.getItemKey(item)) {
           // add to existing slot
           const free = item.stackSize - item.count
           const consumable = Math.min(floating.count, free)
@@ -117,6 +117,10 @@ class InventoryManager {
     }
   }
 
+  getItemKey(item, count = false) {
+    return `${item.type}:${count ? item.count : ''}:${item.nbt ? JSON.stringify(item.nbt) : ''}:${item.metadata}:${item.components ? JSON.stringify(item.components) : ''}`
+  }
+
   onRightClick (inventoryIndex, slot) {
     const { reactive } = this.win
     const initialCount = slot?.count
@@ -128,14 +132,14 @@ class InventoryManager {
     if (floating) {
       if (slot) {
         const free = slot.stackSize - slot.count
-        if (slot.type === floating.type && free >= 1) {
+        if (this.getItemKey(slot) === this.getItemKey(floating) && free >= 1) {
           floating.count--
           slot.count++
         } else {
+          this.setSlot(inventoryIndex, floating)
           reactive.floatingItem = {...slot}
         }
       } else {
-        const slot = new Item(floating.type, floating.count)
         floating.count--
       }
     } else if (slot) {
@@ -248,7 +252,7 @@ class InventoryManager {
       // this.mouseDown = false
       // this.mouseDownSlots = null
       // this.mouseDownFloat = null
-    } else if (type === 'hover' && (containing === 'inventoryItems' || containing === 'hotbarItems')) {
+    } else if (type === 'hover') {
       if (this.win.floatingItem && this.mouseDownFloat) {
         if (this.mouseDown === 'click') { // Left clicking
           // multi spread operation
