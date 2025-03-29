@@ -292,8 +292,8 @@ class InventoryManager {
       this.mouseDownSlots = new Set([inventoryIndex])
       // starting fill
       if (this.win.reactive.floatingItem) {
-        this.mouseDown = type === 'rightmousedown' ? 'right' : 'left'
-        this.spreadFill('start', this.mouseDown === 'right', inventoryIndex)
+        // this.mouseDown = type === 'rightmousedown' ? 'right' : 'left'
+        // this.spreadFill('start', this.mouseDown === 'right', inventoryIndex)
       }
     } else if (type === 'hover') {
       if (this.win.reactive.floatingItem && this.mouseDown) {
