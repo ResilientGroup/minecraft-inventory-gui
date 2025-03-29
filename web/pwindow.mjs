@@ -1,13 +1,14 @@
 // const mcData = require('minecraft-data')('1.16')
 
 class InventoryManager {
-  mouseDown = false
+  /** @type {'left' | 'right' | null} */
+  mouseDown = null
   touch = false
   onJeiClick = (item, index, mouse) => {
     console.log('jei click', item, index, mouse)
   }
 
-  constructor (win, inv, /** @type {import('mineflayer').Bot|undefined} */bot) {
+  constructor (/** @type {import('../lib/InventoryWindow.mjs').InventoryWindow} */win, inv, /** @type {import('mineflayer').Bot|undefined} */bot) {
     this.win = win
     this.inv = inv
     this.bot = bot
@@ -67,66 +68,102 @@ class InventoryManager {
 
   // Called after the user has held down the mouse and has now released it
   onRelease () {
+    if (this.mouseDown) {
+      this.spreadFill('end', this.mouseDown === 'right')
+    }
     this.mouseDown = false
     this.mouseDownSlots = null
-    this.mouseDownFloat = null
     const { reactive } = this.win
     if (reactive.floatingItem?.count === 0) {
       reactive.floatingItem = undefined
     }
   }
 
-  onLeftClick (inventoryIndex, item) {
+  spreadFill(/** @type {'start' | 'end' | 'progress'} */type, /** @type {boolean} */isRight, slotIndex = null) {
+    if (!this.bot) return
+    const currentWindow = this.bot.currentWindow ?? this.bot?.inventory
+    const oldAcceptClick = currentWindow.acceptClick
+    currentWindow.acceptClick = () => {}
+    if (type === 'start') {
+      let mouseButton = isRight ? 4 : 0
+      let mode = 5
+      // currentWindow.selectedItem = {...currentWindow.slots[slotIndex], count: Math.ceil(currentWindow.slots[slotIndex].count / 2)}
+      this.bot?.clickWindow(-999, mouseButton, mode)
+      console.log('spread fill start', isRight, slotIndex)
+    }
+    if (type === 'end') {
+      let mouseButton = isRight ? 6 : 2
+      let mode = 5
+      this.bot?.clickWindow(-999, mouseButton, mode)
+      currentWindow.selectedItem = null
+      console.log('spread fill end')
+    }
+    if (type === 'progress') {
+      let mouseButton = isRight ? 5 : 1
+      let mode = 5
+      this.bot?.clickWindow(slotIndex, mouseButton, mode)
+      console.log('spread fill progress', slotIndex)
+    }
+    currentWindow.acceptClick = oldAcceptClick
+  }
+
+  setCursorItem(index, count) {
+    if (!this.bot) return
+    const currentWindow = this.bot.currentWindow ?? this.bot.inventory
+    currentWindow.selectedItem = {...currentWindow.slots[index], count}
+  }
+
+  onLeftClick(inventoryIndex, item) {
+    if (this.mouseDown) return
     const { reactive } = this.win
     const floating = reactive.floatingItem
+
+    if (!this.disablePicking) {
+      if (floating) {
+        console.log('had a floating item')
+        if (item) {
+          if (this.getItemKey(floating) === this.getItemKey(item)) {
+            // add to existing slot
+            const free = item.stackSize - item.count
+            const consumable = Math.min(floating.count, free)
+            floating.count -= consumable
+            if (floating.count <= 0) {
+              reactive.floatingItem = undefined
+            }
+            this.win.needsUpdate = true
+          } else {
+            // swap
+            const old = this.inv.slots[inventoryIndex]
+            this.setSlot(inventoryIndex, reactive.floatingItem)
+            this.setCursorItem(inventoryIndex, old.count)
+            reactive.floatingItem = old
+            this.win.needsUpdate = true
+          }
+        } else {
+          // slot is empty, set floating item to slot
+          this.setSlot(inventoryIndex, reactive.floatingItem)
+          reactive.floatingItem = null
+          this.win.needsUpdate = true
+        }
+      } else if (item) { // pickup item
+        reactive.floatingItem = { ...item }
+        this.setSlot(inventoryIndex, null)
+        this.setCursorItem(inventoryIndex, item.count)
+      }
+    }
 
     // Send to server!
     console.log('slot click', inventoryIndex)
     this.bot?.clickWindow(inventoryIndex, 0, 0)
-
-    if (this.disablePicking) return
-
-    if (floating) {
-      console.log('had a floating item')
-      if (item) {
-        if (this.getItemKey(floating) === this.getItemKey(item)) {
-          // add to existing slot
-          const free = item.stackSize - item.count
-          const consumable = Math.min(floating.count, free)
-          floating.count -= consumable
-          if (floating.count <= 0) {
-            reactive.floatingItem = undefined
-          }
-          this.win.needsUpdate = true
-        } else {
-          // swap
-          const old = this.inv.slots[inventoryIndex]
-          this.setSlot(inventoryIndex, reactive.floatingItem)
-          reactive.floatingItem = old
-          this.win.needsUpdate = true
-        }
-      } else {
-        // slot is empty, set floating item to slot
-        this.setSlot(inventoryIndex, reactive.floatingItem)
-        reactive.floatingItem = null
-        this.win.needsUpdate = true
-      }
-    } else if (item) { // pickup item
-      reactive.floatingItem = {...item}
-      this.setSlot(inventoryIndex, null)
-    }
   }
 
   getItemKey(item, count = false) {
     return `${item.type}:${count ? item.count : ''}:${item.nbt ? JSON.stringify(item.nbt) : ''}:${item.metadata}:${item.components ? JSON.stringify(item.components) : ''}`
   }
 
-  onRightClick (inventoryIndex, slot) {
+  onRightClick (inventoryIndex, slot, fromSpread = false) {
     const { reactive } = this.win
     const initialCount = slot?.count
-    this.bot?.clickWindow(inventoryIndex, 1, 0)
-
-    if (this.disablePicking) return
 
     const floating = reactive.floatingItem
     if (floating) {
@@ -145,10 +182,15 @@ class InventoryManager {
     } else if (slot) {
       reactive.floatingItem = {...slot}
       reactive.floatingItem.count = initialCount - Math.ceil(slot.count / 2)
+      this.setCursorItem(inventoryIndex, reactive.floatingItem.count)
       this.setSlot(inventoryIndex, slot.count ? slot : null)
     }
     if (slot?.count === 0) delete this.inv.slots[inventoryIndex]
-    if (floating?.count === 0) delete this.win.floatingItem
+    // if (floating?.count === 0) delete this.win.floatingItem
+
+    if (!fromSpread) {
+      this.bot?.clickWindow(inventoryIndex, 1, 0)
+    }
   }
 
   // Adds an item to a slot and returns how much was able to be added
@@ -242,41 +284,44 @@ class InventoryManager {
       }
     } else if (type === 'click' && this.win._downKeys.has('ShiftLeft')) {
       this.onShiftClick(containing, inventoryIndex, item)
+      // MULTISPREAD FILL BELOW
     } else if (type === 'click' || type === 'rightclick') {
       console.log('click with', this.win._downKeys)
       this[type === 'click' ? 'onLeftClick' : 'onRightClick'](inventoryIndex, item)
-      this.mouseDown = type
-      this.mouseDownFloat = this.win.floatingItem?.clone() // Backup of held item we start with
+    } else if (type === 'rightmousedown' || type === 'mousedown') {
       this.mouseDownSlots = new Set([inventoryIndex])
-    } else if (type === 'release') {
-      // this.mouseDown = false
-      // this.mouseDownSlots = null
-      // this.mouseDownFloat = null
+      // starting fill
+      if (this.win.reactive.floatingItem) {
+        this.mouseDown = type === 'rightmousedown' ? 'right' : 'left'
+        this.spreadFill('start', this.mouseDown === 'right', inventoryIndex)
+      }
     } else if (type === 'hover') {
-      if (this.win.floatingItem && this.mouseDownFloat) {
-        if (this.mouseDown === 'click') { // Left clicking
+      if (this.win.reactive.floatingItem && this.mouseDown) {
+        if (this.mouseDown === 'left') {
           // multi spread operation
           if (this.mouseDownSlots.has(inventoryIndex) || item) return
           this.mouseDownSlots.add(inventoryIndex)
-          const dividend = Math.floor(this.mouseDownFloat.count / this.mouseDownSlots.size)
+          const dividend = Math.floor(this.win.reactive.floatingItem.count / this.mouseDownSlots.size)
           if (!dividend) return
-          let accounted = this.mouseDownFloat.count
+          let accounted = this.win.reactive.floatingItem.count
           for (const slotIndex of this.mouseDownSlots) {
             let val = this.inv.slots[slotIndex]
             if (!val) {
-              this.inv.slots[slotIndex] = this.mouseDownFloat.clone()
+              this.inv.slots[slotIndex] = {...this.win.reactive.floatingItem}
               val = this.inv.slots[slotIndex]
             }
             val.count = dividend
             accounted = accounted - dividend
           }
-          floating.count = accounted
+          this.win.reactive.floatingItem.count = accounted
+          this.spreadFill('progress', this.mouseDown === 'right', inventoryIndex)
           this.renderItems()
-        } else if (this.mouseDown === 'rightclick') {
+        } else if (this.mouseDown === 'right') {
           // single spread operation
           if (this.mouseDownSlots.has(inventoryIndex)) return
-          this.onRightClick(inventoryIndex, item)
+          this.onRightClick(inventoryIndex, item, true)
           this.mouseDownSlots.add(inventoryIndex)
+          this.spreadFill('progress', this.mouseDown === 'right', inventoryIndex)
         }
       }
     }
