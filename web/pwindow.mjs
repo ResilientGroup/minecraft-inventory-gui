@@ -130,6 +130,7 @@ class InventoryManager {
         const free = slot.stackSize - slot.count
         if (slot.type === floating.type && free >= 1) {
           floating.count--
+          slot.count++
         } else {
           reactive.floatingItem = {...slot}
         }
@@ -139,7 +140,7 @@ class InventoryManager {
       }
     } else if (slot) {
       reactive.floatingItem = {...slot}
-      reactive.floatingItem.count = initialCount - slot.count
+      reactive.floatingItem.count = initialCount - Math.ceil(slot.count / 2)
       this.setSlot(inventoryIndex, slot.count ? slot : null)
     }
     if (slot?.count === 0) delete this.inv.slots[inventoryIndex]
