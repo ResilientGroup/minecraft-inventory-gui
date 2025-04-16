@@ -79,6 +79,19 @@ class InventoryManager {
     }
   }
 
+  botClickWindow(slotIndex, mouseButton, mode) {
+    if (!this.bot) return
+    const oldClientWrite = this.bot._client.write.bind(this.bot.client)
+    this.bot._client.write = (name, params) => {
+      if (name === 'clickWindow' && this.win.reactive.floatingItem) {
+        params.cursorItem = PrismarineItem.toNotch(this.win.reactive.floatingItem)
+      }
+      oldClientWrite(name, params)
+    }
+    this.bot.clickWindow(slotIndex, mouseButton, mode)
+    this.bot._client.write = oldClientWrite
+  }
+
   spreadFill(/** @type {'start' | 'end' | 'progress'} */type, /** @type {boolean} */isRight, slotIndex = null) {
     if (!this.bot) return
     const currentWindow = this.bot.currentWindow ?? this.bot?.inventory
@@ -88,20 +101,20 @@ class InventoryManager {
       let mouseButton = isRight ? 4 : 0
       let mode = 5
       // currentWindow.selectedItem = {...currentWindow.slots[slotIndex], count: Math.ceil(currentWindow.slots[slotIndex].count / 2)}
-      this.bot?.clickWindow(-999, mouseButton, mode)
+      this.botClickWindow(-999, mouseButton, mode)
       console.log('spread fill start', isRight, slotIndex)
     }
     if (type === 'end') {
       let mouseButton = isRight ? 6 : 2
       let mode = 5
-      this.bot?.clickWindow(-999, mouseButton, mode)
+      this.botClickWindow(-999, mouseButton, mode)
       currentWindow.selectedItem = null
       console.log('spread fill end')
     }
     if (type === 'progress') {
       let mouseButton = isRight ? 5 : 1
       let mode = 5
-      this.bot?.clickWindow(slotIndex, mouseButton, mode)
+      this.botClickWindow(slotIndex, mouseButton, mode)
       console.log('spread fill progress', slotIndex)
     }
     currentWindow.acceptClick = oldAcceptClick
@@ -110,13 +123,17 @@ class InventoryManager {
   setCursorItem(index, count) {
     if (!this.bot) return
     const currentWindow = this.bot.currentWindow ?? this.bot.inventory
-    currentWindow.selectedItem = {...currentWindow.slots[index], count}
+    // currentWindow.selectedItem = PrismarineItem.fromNotch(PrismarineItem.toNotch(currentWindow.slots[index]))
   }
 
   onLeftClick(inventoryIndex, item) {
     if (this.mouseDown) return
     const { reactive } = this.win
     const floating = reactive.floatingItem
+
+    // Send to server!
+    console.log('slot click', inventoryIndex)
+    this.botClickWindow(inventoryIndex, 0, 0)
 
     if (!this.disablePicking) {
       if (floating) {
@@ -151,10 +168,6 @@ class InventoryManager {
         this.setCursorItem(inventoryIndex, item.count)
       }
     }
-
-    // Send to server!
-    console.log('slot click', inventoryIndex)
-    this.bot?.clickWindow(inventoryIndex, 0, 0)
   }
 
   getItemKey(item, count = false) {
@@ -181,7 +194,7 @@ class InventoryManager {
       }
     } else if (slot) {
       reactive.floatingItem = {...slot}
-      reactive.floatingItem.count = initialCount - Math.ceil(slot.count / 2)
+      reactive.floatingItem.count = initialCount - Math.floor(slot.count / 2)
       this.setCursorItem(inventoryIndex, reactive.floatingItem.count)
       this.setSlot(inventoryIndex, slot.count ? slot : null)
     }
@@ -189,7 +202,7 @@ class InventoryManager {
     // if (floating?.count === 0) delete this.win.floatingItem
 
     if (!fromSpread) {
-      this.bot?.clickWindow(inventoryIndex, 1, 0)
+      this.botClickWindow(inventoryIndex, 1, 0)
     }
   }
 
@@ -220,7 +233,7 @@ class InventoryManager {
    */
   onShiftClick (slotType, inventoryIndex, item) {
     if (!item) return
-    this.bot?.clickWindow(inventoryIndex, 0, 1)
+    this.botClickWindow(inventoryIndex, 0, 1)
     // ALL BELOW COMMENTED as the server can handle the rest!
 
     // Shift click move item, TODO: handle edge cases:
