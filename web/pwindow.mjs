@@ -126,8 +126,17 @@ class InventoryManager {
     // currentWindow.selectedItem = PrismarineItem.fromNotch(PrismarineItem.toNotch(currentWindow.slots[index]))
   }
 
+  isInvalidClick(inventoryIndex, item, isRight) {
+    if (inventoryIndex === 0 && item && this.win.reactive.floatingItem) {
+      return true // todo workaround: prismarine-windows doesnt have it right
+    }
+
+    return false
+  }
+
   onLeftClick(inventoryIndex, item) {
     if (this.mouseDown) return
+    if (this.isInvalidClick(inventoryIndex, item, false)) return
     const { reactive } = this.win
     const floating = reactive.floatingItem
 
@@ -145,6 +154,8 @@ class InventoryManager {
             const consumable = Math.min(floating.count, free)
             floating.count -= consumable
             if (floating.count <= 0) {
+              // const currentWindow = this.bot?.currentWindow ?? this.bot?.inventory ?? {}
+              // currentWindow.selectedItem = null
               reactive.floatingItem = undefined
             }
             this.win.needsUpdate = true
@@ -175,6 +186,7 @@ class InventoryManager {
   }
 
   onRightClick (inventoryIndex, slot, fromSpread = false) {
+    if (this.isInvalidClick(inventoryIndex, slot, true)) return
     const { reactive } = this.win
     const initialCount = slot?.count
 
